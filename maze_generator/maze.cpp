@@ -3,15 +3,16 @@
 #include <set>
 #include <random>
 #include <cmath>
+#include <algorithm>
 // #include <stdio.h>
 // #include <stdlib.h>
 // #include <time.h>
+#include "union_find_forest.h"
 #include "maze.h"
 
 using std::cout;
 using std::pair;
 using std::make_pair;
-using std::set;
 using std::size_t;
 
 
@@ -91,19 +92,21 @@ void randomized_depth_first_search(size_t width, size_t height){
  * Initialize grid for kruskal
  * Grid does not have boundaries yet
  */
-void initialize_kruskal(vector<set<pair<size_t, size_t>>>& cells, vector<pair<size_t, size_t>>& walls,
+void initialize_kruskal(union_find_forest<pair<size_t,size_t>>& cells, 
+    vector<pair<size_t, size_t>>& walls,
         size_t width, size_t height) {
     for (size_t i = 0; i < width; ++i) {
         for (size_t j = 0; j < height; ++j) {
-            pair<size_t, size_t> cell(i, j)
-            cells.push_back(cell);
+            pair<size_t, size_t> cell(i, j);
+            size_t cell_index = cells.size();
+            cells.insert(cell);
             if (i > 0) {
-                pair<size_t, size_t> neighbor(i-1,j)
-                walls.push_back(make_pair(neighbor, cell));
+                size_t neighbor_index = cell_index - height;
+                walls.push_back(make_pair(neighbor_index, cell_index));
             }
             if (j > 0) {
-                pair<size_t, size_t> neighbor(i,j-1)
-                walls.push_back(make_pair(neighbor, cell));
+                size_t neighbor_index = cell_index - 1;
+                walls.push_back(make_pair(neighbor_index, cell_index));
             }
         }
     }
@@ -115,9 +118,14 @@ void initialize_kruskal(vector<set<pair<size_t, size_t>>>& cells, vector<pair<si
 void kruskal(size_t width, size_t height){
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
-    std::uniform_int_distribution<> distr(0, 3); 
-    vector<set<pair<size_t, size_t>>> cells;
-    cells.reserve(width*height);
-    vector<pair<pair<size_t, size_t>,pair<size_t, size_t>>> walls;
+    // instead, give every cell a number that maps to the grid
+    // each wall stores the edge between two ints, then reassemble the grid at the end
+    union_find_forest<pair<size_t,size_t>> cells(width*height); // disjoint set data structure
+    vector<pair<size_t,size_t>> walls; // edges
     walls.reserve(2*width*height-width-height); // width*(height-1)+(width-1)*height
+    initialize_kruskal(cells, walls, width, height);
+    shuffle(walls.begin(), walls.end(), gen);
+    for (size_t i = 0; i < walls.size(); ++i) {
+        cells.union_sets(walls[i].first, walls[i].second);
+    }
 }
