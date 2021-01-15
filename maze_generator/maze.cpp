@@ -93,18 +93,17 @@ void randomized_depth_first_search(size_t width, size_t height){
  * Grid does not have boundaries yet
  */
 void initialize_kruskal(union_find_forest<pair<size_t,size_t>>& cells, 
-    vector<pair<size_t, size_t>>& walls,
-        size_t width, size_t height) {
+    vector<pair<size_t, size_t>>& walls, size_t width, size_t height) {
     for (size_t i = 0; i < width; ++i) {
         for (size_t j = 0; j < height; ++j) {
             pair<size_t, size_t> cell(i, j);
             size_t cell_index = cells.size();
             cells.insert(cell);
-            if (i > 0) {
+            if (i > 0) { // neighbor at i - 1
                 size_t neighbor_index = cell_index - height;
                 walls.push_back(make_pair(neighbor_index, cell_index));
             }
-            if (j > 0) {
+            if (j > 0) { // neighbor at j - 1
                 size_t neighbor_index = cell_index - 1;
                 walls.push_back(make_pair(neighbor_index, cell_index));
             }
@@ -118,14 +117,21 @@ void initialize_kruskal(union_find_forest<pair<size_t,size_t>>& cells,
 void kruskal(size_t width, size_t height){
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
-    // instead, give every cell a number that maps to the grid
-    // each wall stores the edge between two ints, then reassemble the grid at the end
     union_find_forest<pair<size_t,size_t>> cells(width*height); // disjoint set data structure
     vector<pair<size_t,size_t>> walls; // edges
     walls.reserve(2*width*height-width-height); // width*(height-1)+(width-1)*height
     initialize_kruskal(cells, walls, width, height);
-    shuffle(walls.begin(), walls.end(), gen);
+    shuffle(walls.begin(), walls.end(), gen); // randomize wall order
+    vector<vector<int>> grid(width*2+1, vector<int>(height*2+1, 1));
+    initialize_grid(grid);
     for (size_t i = 0; i < walls.size(); ++i) {
-        cells.union_sets(walls[i].first, walls[i].second);
+        size_t a = walls[i].first, b = walls[i].second;
+        if (cells.union_sets(a, b)) { // remove walls from grid given successful union
+            if (cells[a].first < cells[b].first)
+                grid[cells[a].first*2+2][cells[a].second*2+1] = 0;
+            else if (cells[a].second < cells[b].second)
+                grid[cells[a].first*2+1][cells[a].second*2+2] = 0;
+        }
     }
+    display_grid(grid);
 }

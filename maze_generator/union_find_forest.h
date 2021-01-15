@@ -2,6 +2,7 @@
 #include <iostream>
 
 using std::cerr;
+using std::cout;
 using std::vector;
 using std::size_t;
 
@@ -53,21 +54,24 @@ class union_find_forest {
          * 
          * @param a index of node in first set to merge
          * @param b index of node in second set to merge
+         * @return whether the two sets were merged or not
          */ 
-        void union_sets(size_t a, size_t b) {
+        bool union_sets(size_t a, size_t b) {
             if (a >= nodes.size() || b >= nodes.size()) {
                 cerr << "union_find_forest.union(): index out of bounds\n";
                 exit(1);
             }
             size_t set_a = find_set(a), set_b = find_set(b);
             if (set_a != set_b) {
-                if (nodes[a]->rank > nodes[b]->rank) nodes[b]->parent = a ;
+                if (nodes[set_a]->rank > nodes[set_b]->rank) nodes[set_b]->parent = set_a ;
                 else {
-                    nodes[a]-> parent = b;
-                    if (nodes[a]->rank == nodes[b]->rank) nodes[b]->rank++;
+                    nodes[set_a]->parent = set_b;
+                    if (nodes[set_a]->rank == nodes[set_b]->rank) nodes[set_b]->rank++;
                 }
                 num_sets--;
+                return true;
             }
+            return false;
         }
         T& operator[](size_t index) {
             if (index >= nodes.size()) {
@@ -78,5 +82,9 @@ class union_find_forest {
         }
         void reserve(size_t size) {
             nodes.reserve(size);
+        }
+        void print() {
+            for (size_t i = 0; i < nodes.size(); ++i)
+                cout << i << " : " << find_set(i) << "\n";
         }
 };

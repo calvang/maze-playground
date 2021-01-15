@@ -2,4 +2,5 @@
 
 int main() {
     randomized_depth_first_search(50, 25);
+    kruskal(50, 25);
 }
