@@ -6,9 +6,6 @@
 #include <algorithm>
 #include <list>
 #include <iterator>
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <time.h>
 #include "union_find_forest.h"
 #include "maze.h"
 
@@ -19,7 +16,7 @@ using std::size_t;
 using std::list;
 
 
-void display_grid(vector<vector<int>>& grid) {
+void display_maze(vector<vector<int>>& grid) {
     for (size_t j = 0; j < grid[0].size(); ++j) {
         for (size_t i = 0; i < grid.size(); ++i) {
             if (grid[i][j] == 1)
@@ -46,12 +43,13 @@ void initialize_grid(vector<vector<int>>& grid) {
 /**
  * Generates maze using depth-first search
  */
-void randomized_depth_first_search(size_t width, size_t height, size_t startX, size_t startY) {
+unique_ptr<vector<vector<int>>> randomized_depth_first_search(size_t width, size_t height, 
+    size_t startX, size_t startY, bool show_frames) {
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
     std::uniform_int_distribution<> distr(0, 3); 
-    vector<vector<int>> grid(width*2+1, vector<int>(height*2+1, 1)); // init matrix of 1s
-    initialize_grid(grid);
+    vector<vector<int>>* grid = new vector<vector<int>>(width*2+1, vector<int>(height*2+1, 1));
+    initialize_grid(*grid);
     vector<vector<bool>> visited(width, vector<bool>(height, false));
     vector<pair<size_t, size_t>> stack;
     size_t maxX = width-1, maxY = height-1;
@@ -82,12 +80,13 @@ void randomized_depth_first_search(size_t width, size_t height, size_t startX, s
             // perform operations on chosen neighbor
             stack.push_back(current);
             size_t gridX = (size_t)(2*x+1), gridY = (size_t)(2*y+1);
-            grid[gridX+neighbor.first][gridY+neighbor.second] = 0;
+            (*grid)[gridX+neighbor.first][gridY+neighbor.second] = 0;
             visited[x+neighbor.first][y+neighbor.second] = true; 
             stack.push_back(make_pair(x+neighbor.first,y+neighbor.second));
         }
+        if (show_frames) display_maze(*grid);
     }
-    display_grid(grid);
+    return unique_ptr<vector<vector<int>>>{grid};
 }
 
 /**
@@ -116,7 +115,7 @@ void initialize_kruskal(union_find_forest<pair<size_t,size_t>>& cells,
 /**
  * Generates maze using Kruskal's algorithm
  */
-void kruskal(size_t width, size_t height) {
+unique_ptr<vector<vector<int>>> kruskal(size_t width, size_t height, bool show_frames) {
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
     union_find_forest<pair<size_t,size_t>> cells(width*height); // disjoint set data structure
@@ -124,18 +123,31 @@ void kruskal(size_t width, size_t height) {
     walls.reserve(2*width*height-width-height); // width*(height-1)+(width-1)*height
     initialize_kruskal(cells, walls, width, height);
     shuffle(walls.begin(), walls.end(), gen); // randomize wall order
-    vector<vector<int>> grid(width*2+1, vector<int>(height*2+1, 1));
-    initialize_grid(grid);
+    vector<vector<int>>* grid = new vector<vector<int>>(width*2+1, vector<int>(height*2+1, 1));
+    initialize_grid(*grid);
     for (size_t i = 0; i < walls.size(); ++i) {
         size_t a = walls[i].first, b = walls[i].second;
         if (cells.union_sets(a, b)) { // remove walls from grid given successful union
             if (cells[a].first < cells[b].first)
-                grid[cells[a].first*2+2][cells[a].second*2+1] = 0;
+                (*grid)[cells[a].first*2+2][cells[a].second*2+1] = 0;
             else if (cells[a].second < cells[b].second)
-                grid[cells[a].first*2+1][cells[a].second*2+2] = 0;
+                (*grid)[cells[a].first*2+1][cells[a].second*2+2] = 0;
         }
+        if (show_frames) display_maze(*grid);
     }
-    display_grid(grid);
+    return unique_ptr<vector<vector<int>>>{grid};
+}
+
+template <class URNG>
+void prim_random_insert(list<size_t>& walls, URNG& gen, size_t value) {
+    if (walls.size() > 0) {
+        std::uniform_int_distribution<> distr(0, walls.size()-1);
+        list<size_t>::iterator position = walls.begin();
+        int choice = distr(gen);
+        std::advance(position, choice);
+        walls.insert(position, value);
+    }
+    else walls.push_front(value);
 }
 
 /**
@@ -146,65 +158,55 @@ void kruskal(size_t width, size_t height) {
 template <class URNG>
 void prim_add_walls(vector<vector<int>>& grid, list<size_t>& walls, URNG& gen, 
     size_t grid_width, size_t grid_height, size_t x, size_t y) {
-    std::uniform_int_distribution<> distr(0, walls.size()); 
-    if (x > 1 && grid[x-2][y] == 1) {
-        std::list<size_t>::iterator position = walls.begin();
-        std::advance(position, distr(gen));
-        walls.insert(position, grid_width*(x - 1) + y);
-    }
-    if (y > 1 && grid[x][y-2] == 1) {
-        std::list<size_t>::iterator position = walls.begin();
-        std::advance(position, distr(gen));
-        walls.insert(position, grid_width*(x) + y - 1);
-    }
-    if (x < grid_width-1 && grid[x+2][y] == 1) {
-        std::list<size_t>::iterator position = walls.begin();
-        std::advance(position, distr(gen));
-        walls.insert(position, grid_width*(x + 1) + y);
-    }
-    if (y < grid_height-1 && grid[x][y+2] == 1) {
-        std::list<size_t>::iterator position = walls.begin();
-        std::advance(position, distr(gen));
-        walls.insert(position, grid_width*(x) + y + 1);
-    }
+    if (x > 1 && grid[x-2][y] == 1)
+        prim_random_insert(walls, gen, grid_width*(x - 1) + y);
+    if (y > 1 && grid[x][y-2] == 1)
+        prim_random_insert(walls, gen, grid_width*(x) + y - 1);
+    if (x < grid_width-2 && grid[x+2][y] == 1)
+        prim_random_insert(walls, gen, grid_width*(x + 1) + y);
+    if (y < grid_height-2 && grid[x][y+2] == 1)
+        prim_random_insert(walls, gen, grid_width*(x) + y + 1);
     grid[x][y] = 0; // mark the cell as visited
 } 
 
 /**
  * Generates maze using Prim's algorithm
  */
-void prim(size_t width, size_t height, size_t startX, size_t startY) {
+unique_ptr<vector<vector<int>>> prim(size_t width, size_t height, 
+    size_t startX, size_t startY, bool show_frames) {
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
     std::uniform_int_distribution<> distr(0, 3);
     list<size_t> walls; // edges, stored as grid indices mapped to 1D
     size_t grid_width = width*2+1, grid_height = height*2+1;
-    vector<vector<int>> grid(grid_width, vector<int>(grid_height, 1));
-    // initialize_grid(grid); // don't need empty cells for this
-    cout << grid.size() << "," << grid[0].size() << "\n";
-    cout << "HI" << "\n";
-    prim_add_walls(grid, walls, gen, grid_width, grid_height, 2*startX+1, 2*startY+1); // starting pt
+    vector<vector<int>>* grid = new vector<vector<int>>(grid_width, vector<int>(grid_height, 1));
+    prim_add_walls(*grid, walls, gen, grid_width, grid_height, 2*startX+1, 2*startY+1); // starting pt
     while (walls.size() > 0) {
         size_t current_wall = *(walls.begin());
-        cout << "WALL" << current_wall << "\n";
         size_t wall_x = current_wall / grid_width; // essentially floored
         size_t wall_y = current_wall - (wall_x * grid_width);
         if (wall_x % 2 == 0) { // vertical wall 
-            cout << wall_x << "," << wall_y << "\n";
-            if (grid[wall_x - 1][wall_y] == 1) 
-                prim_add_walls(grid, walls, gen, grid_width, grid_height, wall_x-1, wall_y);
-            else 
-                prim_add_walls(grid, walls, gen, grid_width, grid_height, wall_x+1, wall_y);
+            if ((*grid)[wall_x - 1][wall_y] == 1 && (*grid)[wall_x + 1][wall_y] == 0) {
+                prim_add_walls(*grid, walls, gen, grid_width, grid_height, wall_x-1, wall_y);
+                (*grid)[wall_x][wall_y] = 0;
+            }
+            else if ((*grid)[wall_x + 1][wall_y] == 1 && (*grid)[wall_x - 1][wall_y] == 0){
+                prim_add_walls(*grid, walls, gen, grid_width, grid_height, wall_x+1, wall_y);
+                (*grid)[wall_x][wall_y] = 0;
+            }
         }
         else { // horizontal wall
-            cout << wall_x << "," << wall_y << ".\n";
-            if (grid[wall_x][wall_y - 1] == 1) 
-                prim_add_walls(grid, walls, gen, grid_width, grid_height, wall_x, wall_y-1);
-            else 
-                prim_add_walls(grid, walls, gen, grid_width, grid_height, wall_x, wall_y+1);
+            if ((*grid)[wall_x][wall_y - 1] == 1 && (*grid)[wall_x][wall_y + 1] == 0) {
+                prim_add_walls(*grid, walls, gen, grid_width, grid_height, wall_x, wall_y-1);
+                (*grid)[wall_x][wall_y] = 0;
+            }
+            else if ((*grid)[wall_x][wall_y + 1] == 1 && (*grid)[wall_x][wall_y - 1] == 0){
+                prim_add_walls(*grid, walls, gen, grid_width, grid_height, wall_x, wall_y+1);
+                (*grid)[wall_x][wall_y] = 0;
+            }
         }
         walls.pop_front();
-        cout << "SIZE" << walls.size() << "\n";
+        if (show_frames) display_maze(*grid);
     }
-    display_grid(grid);
+    return unique_ptr<vector<vector<int>>>{grid};
 }
