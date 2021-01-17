@@ -6,13 +6,16 @@
 #include <algorithm>
 #include <list>
 #include <iterator>
+#include <chrono>
+
 #include "union_find_forest.h"
 #include "maze.h"
 
+using namespace std::chrono;
+
 using std::cout;
-using std::pair;
+using std::cerr;
 using std::make_pair;
-using std::size_t;
 using std::list;
 
 
@@ -29,6 +32,69 @@ void display_maze(vector<vector<int>>& grid) {
 }
 
 /**
+ * Generate a random coordinate from the maze cells
+ * 
+ * @param gen a pseudorandom generator to use
+ */ 
+template <class URNG>
+pair<size_t, size_t> random_coordinate(URNG& gen, size_t width, size_t height) {
+    std::uniform_int_distribution<> distr(0, width*height - 1);
+    int index = distr(gen); // get random 1D index
+    size_t y = index / width;
+    size_t x = index - (y * width);
+    return make_pair(x, y);
+}
+
+/**
+ * Generate a random coordinate in the maze grid
+ * 
+ * @param gen a pseudorandom generator to use
+ */ 
+template <class URNG>
+pair<size_t, size_t> random_maze_coordinate(URNG& gen, size_t width, size_t height) {
+    std::uniform_int_distribution<> distr(0, width*height - 1);
+    int index = distr(gen); // get random 1D index
+    size_t y = index / width;
+    size_t x = index - (y * width);
+    return make_pair(2 * x + 1, 2 * y + 1); // translate to grid coords
+}
+
+/**
+ * Generate a random maze using a chosen algorithm
+ * 
+ * @param algorithm algorithm to use for generation (dfs, kruskal, prim, aldous-broder)
+ * @param random_start if true, uses random starting point, overriding startX and startY
+ *                     if applicable
+ */
+unique_ptr<vector<vector<int>>> generate_maze(size_t width, size_t height, string algorithm,
+    size_t startX, size_t startY, bool random_start, bool show_frames) {
+    if (algorithm == "dfs")
+        return randomized_depth_first_search(width, height, startX, startY, random_start, show_frames);
+    else if (algorithm == "kruskal")
+        return kruskal(width, height, show_frames);
+    else if (algorithm == "prim")
+        return prim(width, height, startX, startY, random_start, show_frames);
+    else if (algorithm == "aldous-broder")
+        return aldous_broder(width, height, show_frames);
+    else {
+        cerr << "ERROR: invalid maze generation algorithm provided!\n";
+        return unique_ptr<vector<vector<int>>>{};
+    }
+}
+
+/**
+ * Benchmark a maze generation algorithm
+ */
+void benchmark_maze(size_t width, size_t height, string algorithm, bool display) {
+    auto start = high_resolution_clock::now();
+    auto maze = generate_maze(width, height, algorithm);
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    if (display) display_maze(*maze);
+    cout << algorithm << ": " << duration.count() << " microseconds\n";
+}
+
+/**
  * Initialize maze grid with walls between every element
  * Indices containing a 1 are walls
  */
@@ -41,20 +107,30 @@ void initialize_grid(vector<vector<int>>& grid) {
 }
 
 /**
- * Generates maze using depth-first search
+ * Generate maze using depth-first search
  */
 unique_ptr<vector<vector<int>>> randomized_depth_first_search(size_t width, size_t height, 
-    size_t startX, size_t startY, bool show_frames) {
+    size_t startX, size_t startY, bool random_start, bool show_frames) {
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
     std::uniform_int_distribution<> distr(0, 3); 
+    
+    if (random_start) {
+        pair<size_t, size_t> start = random_coordinate(gen, width, height);
+        startX = start.first;
+        startY = start.second;
+    }
+
     vector<vector<int>>* grid = new vector<vector<int>>(width*2+1, vector<int>(height*2+1, 1));
     initialize_grid(*grid);
     vector<vector<bool>> visited(width, vector<bool>(height, false));
     vector<pair<size_t, size_t>> stack;
+    
     size_t maxX = width-1, maxY = height-1;
+    
     pair<size_t, size_t> current;
     stack.push_back(make_pair(startX, startY));
+    
     while (!stack.empty()) {
         current = stack.back();
         stack.pop_back();
@@ -113,18 +189,21 @@ void initialize_kruskal(union_find_forest<pair<size_t,size_t>>& cells,
 }
 
 /**
- * Generates maze using Kruskal's algorithm
+ * Generate maze using Kruskal's algorithm
  */
 unique_ptr<vector<vector<int>>> kruskal(size_t width, size_t height, bool show_frames) {
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
+
     union_find_forest<pair<size_t,size_t>> cells(width*height); // disjoint set data structure
     vector<pair<size_t,size_t>> walls; // edges, stores pairs of cell indices
     walls.reserve(2*width*height-width-height); // width*(height-1)+(width-1)*height
     initialize_kruskal(cells, walls, width, height);
     shuffle(walls.begin(), walls.end(), gen); // randomize wall order
+    
     vector<vector<int>>* grid = new vector<vector<int>>(width*2+1, vector<int>(height*2+1, 1));
     initialize_grid(*grid);
+    
     for (size_t i = 0; i < walls.size(); ++i) {
         size_t a = walls[i].first, b = walls[i].second;
         if (cells.union_sets(a, b)) { // remove walls from grid given successful union
@@ -170,17 +249,26 @@ void prim_add_walls(vector<vector<int>>& grid, list<size_t>& walls, URNG& gen,
 } 
 
 /**
- * Generates maze using Prim's algorithm
+ * Generate maze using Prim's algorithm
  */
 unique_ptr<vector<vector<int>>> prim(size_t width, size_t height, 
-    size_t startX, size_t startY, bool show_frames) {
+    size_t startX, size_t startY, bool random_start, bool show_frames) {
     std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
     std::uniform_int_distribution<> distr(0, 3);
+
+    if (random_start) {
+        pair<size_t, size_t> start = random_coordinate(gen, width, height);
+        startX = start.first;
+        startY = start.second;
+    }
+
     list<size_t> walls; // edges, stored as grid indices mapped to 1D
     size_t grid_width = width*2+1, grid_height = height*2+1;
     vector<vector<int>>* grid = new vector<vector<int>>(grid_width, vector<int>(grid_height, 1));
+
     prim_add_walls(*grid, walls, gen, grid_width, grid_height, 2*startX+1, 2*startY+1); // starting pt
+
     while (walls.size() > 0) {
         size_t current_wall = *(walls.begin());
         size_t wall_x = current_wall / grid_width; // essentially floored
@@ -206,6 +294,40 @@ unique_ptr<vector<vector<int>>> prim(size_t width, size_t height,
             }
         }
         walls.pop_front();
+        if (show_frames) display_maze(*grid);
+    }
+    return unique_ptr<vector<vector<int>>>{grid};
+}
+
+/**
+ * Generate maze using Aldous-Broder algorithm
+ */
+unique_ptr<vector<vector<int>>> aldous_broder(size_t width, size_t height, bool show_frames) {
+    std::random_device rd; // obtain a random number from hardware
+    std::mt19937 gen(rd()); // seed the generator
+    std::uniform_int_distribution<> distr(0, 3); 
+
+    size_t grid_width = width*2+1, grid_height = height*2+1;
+    vector<vector<int>>* grid = new vector<vector<int>>(grid_width, vector<int>(grid_height, 1));
+
+    pair<int, int> neighbor_offsets[] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}}; // offset wrt the grid coords
+    size_t unvisited_count = width*height - 1; // start with 1 visited at the start
+
+    pair<size_t, size_t> current = random_maze_coordinate(gen, width, height);
+    (*grid)[current.first][current.second] = 0;
+
+    while (unvisited_count > 0) {
+        pair<int, int> offset = neighbor_offsets[distr(gen)]; 
+        int tmp_x = current.first + offset.first, tmp_y = current.second + offset.second;
+        if (tmp_x > 0 && (size_t)tmp_x < grid_width - 1 
+            && tmp_y > 0 && (size_t)tmp_y < grid_height - 1) {
+            if ((*grid)[tmp_x][tmp_y] == 1) {
+                (*grid)[current.first + offset.first / 2][current.second + offset.second / 2] = 0;
+                (*grid)[tmp_x][tmp_y] = 0;
+                unvisited_count--;
+            }
+            current.first = tmp_x, current.second = tmp_y;
+        }
         if (show_frames) display_maze(*grid);
     }
     return unique_ptr<vector<vector<int>>>{grid};
