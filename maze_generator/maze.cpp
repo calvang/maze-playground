@@ -1,5 +1,6 @@
 #include <utility>
 #include <iostream>
+#include <fstream>
 #include <set>
 #include <random>
 #include <cmath>
@@ -18,7 +19,9 @@ using std::cerr;
 using std::make_pair;
 using std::list;
 
-
+/**
+ * Print maze to stdout
+ */ 
 void display_maze(vector<vector<int>>& grid) {
     for (size_t j = 0; j < grid[0].size(); ++j) {
         for (size_t i = 0; i < grid.size(); ++i) {
@@ -29,6 +32,65 @@ void display_maze(vector<vector<int>>& grid) {
         }
         cout << "\n";
     }
+}
+
+/**
+ * Save maze to a file
+ */ 
+void save_maze(vector<vector<int>>& grid, string file_path, bool binary) {
+    std::ofstream outfile(file_path);
+    if (!outfile.is_open()) cerr << "ERROR: unable to open file!\n";
+    string wall = "█", path = " ";
+    if (binary) wall = "1", path = "0"; 
+    for (size_t j = 0; j < grid[0].size(); ++j) {
+        for (size_t i = 0; i < grid.size(); ++i) {
+            if (grid[i][j] == 1)
+                outfile << wall;
+            else if (grid[i][j] == 0)
+                outfile << path;
+        }
+        outfile << "\n";
+    }
+}
+
+
+/**
+ * Open a saved maze from a file
+ */ 
+unique_ptr<vector<vector<int>>> open_maze(string file_path, bool display) {
+    std::ifstream infile(file_path);
+    if (!infile.is_open()) cerr << "ERROR: unable to open file!\n";
+    string line;
+    bool is_first = true;
+    vector<vector<int>>* grid = new vector<vector<int>>();
+    while (std::getline(infile, line)) {
+        if (display) cout << line << "\n";
+        string wall_cell = "";
+        size_t row = 0;
+        for (char cell : line) {
+            if (cell == '0' || cell == ' ') {
+                if (is_first) grid->push_back(vector<int>());
+                (*grid)[row].push_back(0);
+                row++;
+            }
+            else if (cell == '1') {
+                if (is_first) grid->push_back(vector<int>());
+                (*grid)[row].push_back(1);
+                row++;
+            }
+            else {
+                wall_cell += cell;
+                if (wall_cell == "█") { // this is made up of multiple chars
+                    if (is_first) grid->push_back(vector<int>());
+                    (*grid)[row].push_back(1);
+                    wall_cell.clear();
+                    row++;
+                }
+            }
+        }
+        if (is_first) is_first = false;
+    }
+    return unique_ptr<vector<vector<int>>>{grid};
 }
 
 /**
@@ -85,24 +147,44 @@ unique_ptr<vector<vector<int>>> generate_maze(size_t width, size_t height, strin
 /**
  * Benchmark a maze generation algorithm
  */
-void benchmark_maze(size_t width, size_t height, string algorithm, bool display) {
+void benchmark_maze(size_t width, size_t height, string algorithm, bool display, 
+    bool save, string file_path, bool save_binary) {
     auto start = high_resolution_clock::now();
     auto maze = generate_maze(width, height, algorithm);
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<microseconds>(stop - start);
     if (display) display_maze(*maze);
+    if (save) save_maze(*maze, file_path, save_binary);
     cout << algorithm << ": " << duration.count() << " microseconds\n";
 }
 
 /**
  * Initialize maze grid with walls between every element
  * Indices containing a 1 are walls
+ * 
+ * @param grid initialized with all 1's
  */
 void initialize_grid(vector<vector<int>>& grid) {
     for (size_t i = 1; i < grid.size(); i+=2) {
         for (size_t j = 1; j < grid[0].size(); j+=2) {
             grid[i][j] = 0;
         }
+    }
+}
+
+/**
+ * Initialize maze grid with only walls along the border
+ * 
+ * @param grid initialized with all 0's
+ */
+void initialize_grid_border(vector<vector<int>>& grid) {
+    for (size_t i = 0; i < grid.size(); ++i) {
+        grid[i][0] = 1;
+        grid[i][grid[0].size()-1] = 1;
+    }
+    for (size_t i = 0; i < grid[0].size(); ++i) {
+        grid[0][i] = 1;
+        grid[grid.size()-1][i] = 1;
     }
 }
 
@@ -330,5 +412,60 @@ unique_ptr<vector<vector<int>>> aldous_broder(size_t width, size_t height, bool 
         }
         if (show_frames) display_maze(*grid);
     }
+    return unique_ptr<vector<vector<int>>>{grid};
+}
+
+/**
+ * One step of recursive division
+ * 
+ * @param x x coord of top right corner of chamber
+ * @param y y coord of top right corner of chamber
+ * @param width width of chamber
+ * @param height height of chamber
+ */
+template <class URNG>
+void divide_chamber(vector<vector<int>>& grid, URNG& gen, size_t x, size_t y,
+    size_t width, size_t height, bool show_frames) {
+    if (width > 1 && height > 1) {
+        std::uniform_int_distribution<> x_distr(0, width-1); 
+        std::uniform_int_distribution<> y_distr(0, height-1);
+        size_t x_pass = x_distr(gen) + x;
+        size_t y_pass = y_distr(gen) + y;
+
+        pair<size_t, size_t> wall_coord = random_maze_coordinate(gen, width-1, height-1);
+        wall_coord.first++;
+        wall_coord.second++;
+        
+        // create the two chamber divisions
+        for (size_t i = 0; i < width; ++i) {
+            grid[i + x][y + wall_coord.second] = 1;
+        }
+        for (size_t i = 0; i < height; ++i) {
+            grid[x + wall_coord.first][i + y] = 1;
+        }
+
+        // set the passages
+        grid[x_pass][y + wall_coord.second] = 0;
+        grid[x + wall_coord.first][y_pass] = 0;
+
+        if (show_frames) display_maze(grid);
+    }   
+}
+
+/**
+ * Generate maze using Recursive Division method
+ */
+unique_ptr<vector<vector<int>>> recursive_division(size_t width, size_t height, bool show_frames) {
+    std::random_device rd; // obtain a random number from hardware
+    std::mt19937 gen(rd()); // seed the generator
+    std::uniform_int_distribution<> distr(0, 3); 
+
+    size_t grid_width = width*2+1, grid_height = height*2+1;
+    vector<vector<int>>* grid = new vector<vector<int>>(grid_width, vector<int>(grid_height, 0));
+    initialize_grid_border(*grid);
+
+    size_t chamber_width = grid_width - 2, chamber_height = grid_height - 2;
+    divide_chamber(*grid, gen, 1, 1, chamber_width, chamber_height, show_frames);
+
     return unique_ptr<vector<vector<int>>>{grid};
 }
