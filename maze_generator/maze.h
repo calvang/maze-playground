@@ -11,7 +11,7 @@ using std::string;
 
 void display_maze(vector<vector<int>>& grid);
 
-void save_maze(vector<vector<int>>& grid, string file_path, bool binary=false);
+void save_maze(vector<vector<int>>& grid, string file_path, bool binary=true);
 
 unique_ptr<vector<vector<int>>> open_maze(string file_path, bool display=false);
 

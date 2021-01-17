@@ -26,9 +26,9 @@ void display_maze(vector<vector<int>>& grid) {
     for (size_t j = 0; j < grid[0].size(); ++j) {
         for (size_t i = 0; i < grid.size(); ++i) {
             if (grid[i][j] == 1)
-                cout << "█";
+                cout << "██";
             else if (grid[i][j] == 0)
-                cout << " ";
+                cout << "  ";
         }
         cout << "\n";
     }
@@ -40,7 +40,7 @@ void display_maze(vector<vector<int>>& grid) {
 void save_maze(vector<vector<int>>& grid, string file_path, bool binary) {
     std::ofstream outfile(file_path);
     if (!outfile.is_open()) cerr << "ERROR: unable to open file!\n";
-    string wall = "█", path = " ";
+    string wall = "██", path = "  ";
     if (binary) wall = "1", path = "0"; 
     for (size_t j = 0; j < grid[0].size(); ++j) {
         for (size_t i = 0; i < grid.size(); ++i) {
@@ -67,8 +67,9 @@ unique_ptr<vector<vector<int>>> open_maze(string file_path, bool display) {
         if (display) cout << line << "\n";
         string wall_cell = "";
         size_t row = 0;
+        size_t double_index = 0; // track the double chars
         for (char cell : line) {
-            if (cell == '0' || cell == ' ') {
+            if (cell == '0') {
                 if (is_first) grid->push_back(vector<int>());
                 (*grid)[row].push_back(0);
                 row++;
@@ -78,13 +79,24 @@ unique_ptr<vector<vector<int>>> open_maze(string file_path, bool display) {
                 (*grid)[row].push_back(1);
                 row++;
             }
+            else if (cell == ' ') {
+                double_index++;
+                if (double_index % 2 == 0) {
+                    if (is_first) grid->push_back(vector<int>());
+                    (*grid)[row].push_back(0);
+                    row++;
+                }
+            }
             else {
                 wall_cell += cell;
                 if (wall_cell == "█") { // this is made up of multiple chars
-                    if (is_first) grid->push_back(vector<int>());
-                    (*grid)[row].push_back(1);
+                    double_index++;
+                    if (double_index % 2 == 0) {
+                        if (is_first) grid->push_back(vector<int>());
+                        (*grid)[row].push_back(1);
+                        row++;
+                    }
                     wall_cell.clear();
-                    row++;
                 }
             }
         }
