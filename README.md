@@ -1,6 +1,6 @@
 # Maze Generator and Path Finder
 
-![image-20201228233224785](README.assets/image-20201228233224785.png)
+<p align="center"><img src="README.assets/aldous-broder.png" alt="maze" style="zoom:20%;" /></p>
 
 ## Maze Generation Algorithms
 
