@@ -39,7 +39,10 @@ void display_maze(vector<vector<int>>& grid) {
  */ 
 void save_maze(vector<vector<int>>& grid, string file_path, bool binary) {
     std::ofstream outfile(file_path);
-    if (!outfile.is_open()) cerr << "ERROR: unable to open file!\n";
+    if (!outfile.is_open()) {
+        cerr << "ERROR: unable to open file!\n";
+        exit(1);
+    }
     string wall = "██", path = "  ";
     if (binary) wall = "1", path = "0"; 
     for (size_t j = 0; j < grid[0].size(); ++j) {
@@ -57,9 +60,12 @@ void save_maze(vector<vector<int>>& grid, string file_path, bool binary) {
 /**
  * Open a saved maze from a file
  */ 
-unique_ptr<vector<vector<int>>> open_maze(string file_path, bool display) {
+unique_ptr<vector<vector<int>>> load_maze(string file_path, bool display) {
     std::ifstream infile(file_path);
-    if (!infile.is_open()) cerr << "ERROR: unable to open file!\n";
+    if (!infile.is_open()) {
+        cerr << "ERROR: unable to open file!\n";
+        exit(1);
+    }
     string line;
     bool is_first = true;
     vector<vector<int>>* grid = new vector<vector<int>>();
@@ -120,6 +126,19 @@ pair<size_t, size_t> random_coordinate(URNG& gen, size_t width, size_t height) {
 }
 
 /**
+ * Generate a random coordinate from the maze cells without providing a generator
+ */
+pair<size_t, size_t> random_coordinate(size_t width, size_t height) {
+    std::random_device rd; // obtain a random number from hardware
+    std::mt19937 gen(rd()); // seed the generator
+    std::uniform_int_distribution<> distr(0, width*height - 1);
+    int index = distr(gen); // get random 1D index
+    size_t y = index / width;
+    size_t x = index - (y * width);
+    return make_pair(x, y);
+}
+
+/**
  * Generate a random coordinate in the maze grid
  * 
  * @param gen a pseudorandom generator to use
@@ -159,7 +178,7 @@ unique_ptr<vector<vector<int>>> generate_maze(size_t width, size_t height, strin
 /**
  * Benchmark a maze generation algorithm
  */
-void benchmark_maze(size_t width, size_t height, string algorithm, bool display, 
+unique_ptr<vector<vector<int>>> benchmark_maze(size_t width, size_t height, string algorithm, bool display, 
     bool save, string file_path, bool save_binary) {
     auto start = high_resolution_clock::now();
     auto maze = generate_maze(width, height, algorithm);
@@ -168,6 +187,7 @@ void benchmark_maze(size_t width, size_t height, string algorithm, bool display,
     if (display) display_maze(*maze);
     if (save) save_maze(*maze, file_path, save_binary);
     cout << algorithm << ": " << duration.count() << " microseconds\n";
+    return maze;
 }
 
 /**
